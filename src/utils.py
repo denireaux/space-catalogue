@@ -6,7 +6,7 @@ import logging
 
 def database_init(database_url=None):
     if database_url is None:
-        database_url = os.getenv("DATABASE_URL", "postgresql://user:password@db:5432/mydatabase")
+        database_url = os.getenv("DATABASE_URL", "postgresql://user:password@db:5432/space-catalogue")
         
     engine = create_engine(database_url)
     SessionLocal = sessionmaker(bind=engine) 
