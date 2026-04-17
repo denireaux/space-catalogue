@@ -1,27 +1,25 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from sqlalchemy import text
-from src.utils import get_logger, database_init, get_db_conn
+from datetime import datetime, timezone
+from src.utils import get_logger, get_db_conn, sync_engine
 from src.poller import login, BackgroundScheduler, poll_and_upsert
 
 log = get_logger()
-app = FastAPI()
-engine, SessionLocal = database_init()
 
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     log.info("API started")
     login()
     scheduler = BackgroundScheduler()
-    scheduler.add_job(poll_and_upsert, "interval", hours=1, args=[engine])
+    scheduler.add_job(poll_and_upsert, "interval", hours=1, args=[sync_engine], next_run_time=datetime.now(timezone.utc))
     scheduler.start()
-    poll_and_upsert(engine)
+    yield
+    scheduler.shutdown()
 
-@app.get("/gps")
-def get_last_fifty_gps(conn = Depends(get_db_conn), limit: int = 50):
-    result = conn.execute(text("SELECT * FROM gp ORDER BY epoch DESC LIMIT :l"), {"l": limit})
-    return [dict(row._mapping) for row in result]
+app = FastAPI(lifespan=lifespan)
 
-@app.get("/starlinks")
-def get_starlinks(conn = Depends(get_db_conn)):
-    result = conn.execute(text("SELECT * FROM gp WHERE object_name ILIKE '%STARLINK%';"))
+@app.get("/messages/all")
+async def get_messages(conn = Depends(get_db_conn)):
+    result = await conn.execute(text("SELECT * FROM gp ORDER BY epoch DESC LIMIT 100"))
     return [dict(row._mapping) for row in result]
